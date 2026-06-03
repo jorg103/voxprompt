@@ -279,19 +279,24 @@
 
 <div id="toast"></div>
 
+<!-- Jouw persoonlijke instellingen (vul je één keer in, blijft staan bij updates) -->
+<script src="config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 /* =================================================================
    VoxPrompt — configuratie
+   Je persoonlijke gegevens staan in het losse bestand config.js
+   (dat vul je één keer in en hoef je bij updates nooit meer aan te raken).
    ================================================================= */
+const VC = (typeof window!=="undefined" && window.VOX_CONFIG) ? window.VOX_CONFIG : {};
 const CONFIG = {
   APP_NAME: "VoxPrompt",
   APP_URL: window.location.origin + window.location.pathname,
   TRANSCRIPT_LANG: "nl-NL",
-  SUPABASE_URL: "VUL_HIER_JE_SUPABASE_URL_IN",
-  SUPABASE_ANON_KEY: "VUL_HIER_JE_SUPABASE_ANON_KEY_IN",
   BUCKET: "audio",
-  OWNER_EMAIL: "VUL_HIER_JE_EIGEN_EMAIL_IN"   // alleen dit account ziet de Admin-tab + deelfunctie
+  SUPABASE_URL: VC.SUPABASE_URL || "",
+  SUPABASE_ANON_KEY: VC.SUPABASE_ANON_KEY || "",
+  OWNER_EMAIL: VC.OWNER_EMAIL || ""   // alleen dit account ziet de Admin-tab + deelfunctie
 };
 
 const TEMPLATES = [
@@ -416,7 +421,7 @@ $("#setPassBtn").addEventListener("click", setNewPassword);
 $("#newPass").addEventListener("keydown", e=>{ if(e.key==="Enter") setNewPassword(); });
 
 /* ---------- Eigenaar / admin-zichtbaarheid ---------- */
-function ownerConfigured(){ return CONFIG.OWNER_EMAIL && !CONFIG.OWNER_EMAIL.startsWith("VUL_HIER"); }
+function ownerConfigured(){ return CONFIG.OWNER_EMAIL && !CONFIG.OWNER_EMAIL.startsWith("jorg_103@hotmail.com"); }
 function isOwner(){
   if(!ownerConfigured()) return true; // nog niet ingesteld: niet uitsluiten (geen lockout tijdens setup)
   return !!(currentUser && currentUser.email && currentUser.email.toLowerCase() === CONFIG.OWNER_EMAIL.toLowerCase());
