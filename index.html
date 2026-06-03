@@ -160,12 +160,20 @@
       <svg viewBox="0 0 24 24" fill="none"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Z" fill="#fff"/><path d="M6 11a6 6 0 0 0 12 0M12 17v3" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
     </div>
     <h1>Vox<span>Prompt</span></h1>
-    <p class="sub" id="loginSub">Log in op je eigen, afgeschermde ruimte</p>
-    <input class="txt" type="email" id="loginEmail" placeholder="E-mailadres" autocomplete="email" />
-    <input class="txt" type="password" id="loginPass" placeholder="Wachtwoord" autocomplete="current-password" />
-    <button class="btn primary" id="loginBtn" style="width:100%; margin-top:4px;">Inloggen</button>
+    <div id="loginForm">
+      <p class="sub" id="loginSub">Log in op je eigen, afgeschermde ruimte</p>
+      <input class="txt" type="email" id="loginEmail" placeholder="E-mailadres" autocomplete="email" />
+      <input class="txt" type="password" id="loginPass" placeholder="Wachtwoord" autocomplete="current-password" />
+      <button class="btn primary" id="loginBtn" style="width:100%; margin-top:4px;">Inloggen</button>
+      <div class="login-toggle" id="loginToggle">Nog geen account? <b id="toggleLink">Account aanmaken</b></div>
+      <div class="login-toggle" id="forgotWrap"><b id="forgotLink">Wachtwoord vergeten?</b></div>
+    </div>
+    <div id="recoverPanel" class="hidden">
+      <p class="sub">Kies een nieuw wachtwoord</p>
+      <input class="txt" type="password" id="newPass" placeholder="Nieuw wachtwoord (min. 6 tekens)" autocomplete="new-password" />
+      <button class="btn primary" id="setPassBtn" style="width:100%; margin-top:4px;">Wachtwoord opslaan</button>
+    </div>
     <div id="loginMsg"></div>
-    <div class="login-toggle" id="loginToggle">Nog geen account? <b id="toggleLink">Account aanmaken</b></div>
   </div>
 </div>
 
@@ -280,10 +288,10 @@ const CONFIG = {
   APP_NAME: "VoxPrompt",
   APP_URL: window.location.origin + window.location.pathname,
   TRANSCRIPT_LANG: "nl-NL",
-  SUPABASE_URL: "https://ddfgrwvocghevidiigkp.supabase.co",
-  SUPABASE_ANON_KEY: "sb_publishable_jggxur9gC04I5gbQ9RHhyg_Ob6Z4-5j",
+  SUPABASE_URL: "VUL_HIER_JE_SUPABASE_URL_IN",
+  SUPABASE_ANON_KEY: "VUL_HIER_JE_SUPABASE_ANON_KEY_IN",
   BUCKET: "audio",
-  OWNER_EMAIL: "jorg_103@hotmail.com"   // alleen dit account ziet de Admin-tab + deelfunctie
+  OWNER_EMAIL: "VUL_HIER_JE_EIGEN_EMAIL_IN"   // alleen dit account ziet de Admin-tab + deelfunctie
 };
 
 const TEMPLATES = [
@@ -322,7 +330,9 @@ function initSupabase(){
   if(!CONFIG.SUPABASE_URL || CONFIG.SUPABASE_URL.startsWith("VUL_HIER") || !window.supabase){
     set.className="status-pill warn"; txt.textContent="Niet ingesteld"; dbReady=false; return;
   }
-  try{ sb=window.supabase.createClient(CONFIG.SUPABASE_URL,CONFIG.SUPABASE_ANON_KEY); dbReady=true; }
+  try{ sb=window.supabase.createClient(CONFIG.SUPABASE_URL,CONFIG.SUPABASE_ANON_KEY); dbReady=true;
+    sb.auth.onAuthStateChange((event)=>{ if(event==="PASSWORD_RECOVERY") showRecover(); });
+  }
   catch(e){ set.className="status-pill warn"; txt.textContent="Verbindingsfout"; dbReady=false; }
 }
 
@@ -368,6 +378,41 @@ document.addEventListener("click",(e)=>{ if(e.target&&e.target.id==="toggleLink"
   $("#loginSub").textContent = signup?"Maak je eigen, afgeschermde ruimte aan":"Log in op je eigen, afgeschermde ruimte";
   $("#loginToggle").innerHTML = signup ? 'Al een account? <b id="toggleLink">Inloggen</b>' : 'Nog geen account? <b id="toggleLink">Account aanmaken</b>';
 }});
+
+/* ---------- Wachtwoord vergeten / resetten ---------- */
+async function forgotPassword(){
+  const email=$("#loginEmail").value.trim();
+  if(!email){ $("#loginMsg").textContent="Vul eerst je e-mailadres in en tik dan op 'Wachtwoord vergeten?'."; return; }
+  if(!dbReady){ $("#loginMsg").textContent="Database nog niet ingesteld."; return; }
+  $("#loginMsg").textContent="Versturen…";
+  try{
+    const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: CONFIG.APP_URL });
+    if(error) throw error;
+    $("#loginMsg").textContent="Resetlink verstuurd — check je e-mail en open de link op dit toestel.";
+  }catch(e){ $("#loginMsg").textContent = e.message||"Versturen mislukt"; }
+}
+function showRecover(){
+  $("#loginOverlay").classList.remove("hidden");
+  $("#loginForm").classList.add("hidden");
+  $("#recoverPanel").classList.remove("hidden");
+  $("#loginMsg").textContent="Je kunt nu een nieuw wachtwoord kiezen.";
+}
+async function setNewPassword(){
+  const np=$("#newPass").value;
+  if(!np || np.length<6){ $("#loginMsg").textContent="Wachtwoord moet minstens 6 tekens zijn."; return; }
+  const btn=$("#setPassBtn"); btn.disabled=true; btn.textContent="Opslaan…";
+  try{
+    const { data, error } = await sb.auth.updateUser({ password: np });
+    if(error) throw error;
+    currentUser = data.user;
+    $("#recoverPanel").classList.add("hidden"); $("#loginForm").classList.remove("hidden");
+    toast("Wachtwoord gewijzigd ✓"); enterApp();
+  }catch(e){ $("#loginMsg").textContent = e.message||"Wijzigen mislukt"; }
+  finally{ btn.disabled=false; btn.textContent="Wachtwoord opslaan"; }
+}
+document.addEventListener("click",(e)=>{ if(e.target&&e.target.id==="forgotLink") forgotPassword(); });
+$("#setPassBtn").addEventListener("click", setNewPassword);
+$("#newPass").addEventListener("keydown", e=>{ if(e.key==="Enter") setNewPassword(); });
 
 /* ---------- Eigenaar / admin-zichtbaarheid ---------- */
 function ownerConfigured(){ return CONFIG.OWNER_EMAIL && !CONFIG.OWNER_EMAIL.startsWith("VUL_HIER"); }
