@@ -382,14 +382,15 @@ document.addEventListener("click",(e)=>{ if(e.target&&e.target.id==="toggleLink"
 /* ---------- Wachtwoord vergeten / resetten ---------- */
 async function forgotPassword(){
   const email=$("#loginEmail").value.trim();
-  if(!email){ $("#loginMsg").textContent="Vul eerst je e-mailadres in en tik dan op 'Wachtwoord vergeten?'."; return; }
-  if(!dbReady){ $("#loginMsg").textContent="Database nog niet ingesteld."; return; }
-  $("#loginMsg").textContent="Versturen…";
+  if(!email){ const m="Vul eerst hierboven je e-mailadres in, tik dan op 'Wachtwoord vergeten?'."; $("#loginMsg").textContent=m; toast(m,true); $("#loginEmail").focus(); return; }
+  if(!dbReady){ $("#loginMsg").textContent="Database nog niet ingesteld."; toast("Database niet ingesteld",true); return; }
+  $("#loginMsg").textContent="Versturen…"; toast("Resetlink versturen…");
   try{
     const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: CONFIG.APP_URL });
     if(error) throw error;
     $("#loginMsg").textContent="Resetlink verstuurd — check je e-mail en open de link op dit toestel.";
-  }catch(e){ $("#loginMsg").textContent = e.message||"Versturen mislukt"; }
+    toast("Resetlink verstuurd ✓");
+  }catch(e){ $("#loginMsg").textContent = e.message||"Versturen mislukt"; toast(e.message||"Versturen mislukt",true); }
 }
 function showRecover(){
   $("#loginOverlay").classList.remove("hidden");
