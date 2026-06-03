@@ -173,6 +173,14 @@
       <input class="txt" type="password" id="newPass" placeholder="Nieuw wachtwoord (min. 6 tekens)" autocomplete="new-password" />
       <button class="btn primary" id="setPassBtn" style="width:100%; margin-top:4px;">Wachtwoord opslaan</button>
     </div>
+    <div id="bioPanel" class="hidden">
+      <p class="sub">Welkom terug</p>
+      <button class="btn primary" id="bioBtn" style="width:100%; margin-top:4px;">
+        <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="4" stroke="currentColor" stroke-width="1.8"/><path d="M8 9v1M16 9v1M9 15s1 1.5 3 1.5S15 15 15 15M8 7h-.5A1.5 1.5 0 0 0 6 8.5V9m10-2h.5A1.5 1.5 0 0 1 18 8.5V9M8 17H7.5A1.5 1.5 0 0 1 6 15.5V15m10 2h.5a1.5 1.5 0 0 0 1.5-1.5V15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        Ontgrendel met Face ID
+      </button>
+      <div class="login-toggle"><b id="usePwLink">Met wachtwoord inloggen</b></div>
+    </div>
     <div id="loginMsg"></div>
   </div>
 </div>
@@ -345,9 +353,31 @@ function initSupabase(){
 async function checkSession(){
   if(!dbReady){ showLogin(); $("#loginMsg").textContent="Database nog niet ingesteld — zie de uitleg."; return; }
   const { data:{ session } } = await sb.auth.getSession();
-  if(session && session.user){ currentUser=session.user; enterApp(); } else showLogin();
+  if(session && session.user){
+    currentUser=session.user;
+    if(faceAvailable()) showBio(); else enterApp();
+  } else showLogin();
 }
-function showLogin(){ $("#loginOverlay").classList.remove("hidden"); }
+function faceAvailable(){ return !!localStorage.getItem(CRED_KEY) && !!window.PublicKeyCredential; }
+function showLogin(){ $("#loginOverlay").classList.remove("hidden"); $("#loginForm").classList.remove("hidden"); $("#bioPanel").classList.add("hidden"); $("#recoverPanel").classList.add("hidden"); }
+function showBio(){ $("#loginOverlay").classList.remove("hidden"); $("#loginForm").classList.add("hidden"); $("#recoverPanel").classList.add("hidden"); $("#bioPanel").classList.remove("hidden"); $("#loginMsg").textContent=""; }
+async function unlockBiometric(){
+  if(!faceAvailable()){ showLogin(); return; }
+  try{
+    const id=localStorage.getItem(CRED_KEY);
+    await navigator.credentials.get({ publicKey:{ challenge:randBytes(32), allowCredentials:[{type:"public-key",id:b64urlToBuf(id)}], userVerification:"required", timeout:60000, rpId:location.hostname }});
+    enterApp();
+  }catch(e){ $("#loginMsg").textContent="Face ID mislukt — probeer opnieuw of log in met wachtwoord."; toast("Face ID mislukt",true); }
+}
+async function offerFaceEnroll(){
+  try{
+    if(faceAvailable() || !window.PublicKeyCredential) return;
+    if(!confirm("Wil je voortaan met Face ID inloggen in plaats van je wachtwoord?")) return;
+    await registerFaceCredential(); toast("Face ID ingesteld ✓");
+  }catch(e){}
+}
+$("#bioBtn").addEventListener("click", unlockBiometric);
+document.addEventListener("click",(e)=>{ if(e.target&&e.target.id==="usePwLink") showLogin(); });
 function enterApp(){
   $("#loginOverlay").classList.add("hidden");
   const set=$("#dbStatus"), txt=$("#dbStatusText");
@@ -363,12 +393,12 @@ async function doAuth(){
     if(loginMode==="signup"){
       const { data, error } = await sb.auth.signUp({ email, password:pass });
       if(error) throw error;
-      if(data.session){ currentUser=data.user; enterApp(); }
+      if(data.session){ currentUser=data.user; enterApp(); await offerFaceEnroll(); }
       else $("#loginMsg").textContent="Check je e-mail om je account te bevestigen, log daarna in.";
     } else {
       const { data, error } = await sb.auth.signInWithPassword({ email, password:pass });
       if(error) throw error;
-      currentUser=data.user; enterApp();
+      currentUser=data.user; enterApp(); await offerFaceEnroll();
     }
   }catch(e){ $("#loginMsg").textContent = e.message||"Inloggen mislukt"; }
   finally{ btn.disabled=false; btn.textContent = loginMode==="signup"?"Account aanmaken":"Inloggen"; }
@@ -421,10 +451,10 @@ $("#setPassBtn").addEventListener("click", setNewPassword);
 $("#newPass").addEventListener("keydown", e=>{ if(e.key==="Enter") setNewPassword(); });
 
 /* ---------- Eigenaar / admin-zichtbaarheid ---------- */
-function ownerConfigured(){ return CONFIG.OWNER_EMAIL && !CONFIG.OWNER_EMAIL.startsWith("jorg_103@hotmail.com"); }
+function ownerConfigured(){ return !!(CONFIG.OWNER_EMAIL && !CONFIG.OWNER_EMAIL.startsWith("VUL_HIER")); }
 function isOwner(){
-  if(!ownerConfigured()) return true; // nog niet ingesteld: niet uitsluiten (geen lockout tijdens setup)
-  return !!(currentUser && currentUser.email && currentUser.email.toLowerCase() === CONFIG.OWNER_EMAIL.toLowerCase());
+  if(!ownerConfigured()) return false; // OWNER_EMAIL niet ingesteld: niemand is eigenaar, Admin blijft verborgen
+  return !!(currentUser && currentUser.email && currentUser.email.trim().toLowerCase() === CONFIG.OWNER_EMAIL.trim().toLowerCase());
 }
 function applyOwnerVisibility(){
   const adminBtn = document.querySelector('.nav-btn[data-view="admin"]');
@@ -608,10 +638,13 @@ function adminInit(){
   $("#faceBtnText").textContent=reg?"Ontgrendel met Face ID":"Face ID instellen";
 }
 $("#faceBtn").addEventListener("click",async()=>{ if(!window.PublicKeyCredential){ toast("Face ID/WebAuthn niet ondersteund",true); return; } localStorage.getItem(CRED_KEY)?unlockAdmin():registerFace(); });
+async function registerFaceCredential(){
+  const cred=await navigator.credentials.create({ publicKey:{ challenge:randBytes(32), rp:{name:CONFIG.APP_NAME,id:location.hostname}, user:{id:randBytes(16),name:(currentUser&&currentUser.email)||"admin",displayName:"VoxPrompt"}, pubKeyCredParams:[{type:"public-key",alg:-7},{type:"public-key",alg:-257}], authenticatorSelection:{authenticatorAttachment:"platform",userVerification:"required",residentKey:"preferred"}, timeout:60000, attestation:"none" }});
+  localStorage.setItem(CRED_KEY,bufToB64url(cred.rawId));
+}
 async function registerFace(){
   try{
-    const cred=await navigator.credentials.create({ publicKey:{ challenge:randBytes(32), rp:{name:CONFIG.APP_NAME,id:location.hostname}, user:{id:randBytes(16),name:"admin",displayName:"Admin"}, pubKeyCredParams:[{type:"public-key",alg:-7},{type:"public-key",alg:-257}], authenticatorSelection:{authenticatorAttachment:"platform",userVerification:"required",residentKey:"preferred"}, timeout:60000, attestation:"none" }});
-    localStorage.setItem(CRED_KEY,bufToB64url(cred.rawId)); toast("Face ID ingesteld ✓"); adminInit(); openAdmin();
+    await registerFaceCredential(); toast("Face ID ingesteld ✓"); adminInit(); openAdmin();
   }catch(e){ console.error(e); toast("Face ID instellen geannuleerd",true); }
 }
 async function unlockAdmin(){
