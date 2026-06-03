@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+<title>VoxPrompt — spraak naar prompt</title>
+
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="VoxPrompt" />
+<meta name="theme-color" content="#0E0F13" />
+<meta name="mobile-web-app-capable" content="yes" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet" />
+
+<style>
+  :root{
+    --ink:#0E0F13; --ink-2:#14151A; --surface:#1B1D24; --surface-2:#23262F; --line:#2B2E38;
+    --text:#F4F2EE; --muted:#8A8C96; --muted-2:#5E616C;
+    --coral:#FF5C49; --coral-soft:#FF7A66; --amber:#FFB454; --mint:#5BE3B3;
+    --radius:20px; --shadow:0 18px 50px rgba(0,0,0,.45); --nav-h:74px;
+    --font-display:"Bricolage Grotesque", serif; --font-body:"Outfit", system-ui, sans-serif;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; padding:0; height:100%;}
+  body{font-family:var(--font-body); background:var(--ink); color:var(--text); line-height:1.5; overflow:hidden; position:relative;}
+  body::before{content:""; position:fixed; inset:0; z-index:0; pointer-events:none;
+    background:radial-gradient(120% 80% at 50% -10%, rgba(255,92,73,.16), transparent 55%),radial-gradient(90% 60% at 90% 110%, rgba(91,227,179,.08), transparent 60%),var(--ink);}
+  body::after{content:""; position:fixed; inset:0; z-index:0; pointer-events:none; opacity:.035;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");}
+
+  #app{position:relative; z-index:1; height:100dvh; height:100vh; display:flex; flex-direction:column; max-width:560px; margin:0 auto;}
+
+  header{padding:max(env(safe-area-inset-top),18px) 22px 10px; display:flex; align-items:center; justify-content:space-between; flex-shrink:0;}
+  .brand{display:flex; align-items:center; gap:10px;}
+  .brand .dot{width:30px; height:30px; border-radius:9px; background:linear-gradient(145deg,var(--coral),var(--amber)); display:grid; place-items:center; box-shadow:0 6px 18px rgba(255,92,73,.4);}
+  .brand .dot svg{width:16px;height:16px;}
+  .brand h1{font-family:var(--font-display); font-weight:800; font-size:21px; margin:0; letter-spacing:-.02em;}
+  .brand h1 span{color:var(--coral);}
+  .status-pill{font-size:11px; color:var(--muted); border:1px solid var(--line); padding:5px 10px; border-radius:999px; display:flex; align-items:center; gap:6px; max-width:140px; overflow:hidden;}
+  .status-pill .led{width:7px;height:7px;border-radius:50%;background:var(--muted-2); flex-shrink:0;}
+  .status-pill.ok .led{background:var(--mint);}
+  .status-pill.warn .led{background:var(--amber);}
+  .status-pill span:last-child{white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+
+  main{flex:1; overflow-y:auto; overflow-x:hidden; padding:6px 18px calc(var(--nav-h) + 24px); -webkit-overflow-scrolling:touch;}
+  .view{display:none; animation:fade .35s ease both;}
+  .view.active{display:block;}
+  @keyframes fade{from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:none;}}
+  .view-title{font-family:var(--font-display); font-weight:600; font-size:15px; color:var(--muted); text-transform:uppercase; letter-spacing:.14em; margin:14px 4px 16px;}
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:18px;}
+
+  .recorder{text-align:center; padding-top:14px; display:flex; flex-direction:column; align-items:center;}
+  .rec-timer{font-family:var(--font-display); font-weight:600; font-size:48px; letter-spacing:.01em; margin:6px 0 4px; font-variant-numeric:tabular-nums;}
+  .rec-hint{color:var(--muted); font-size:14px; margin-bottom:30px; min-height:20px;}
+  .rec-btn-wrap{position:relative; width:200px; height:200px; display:grid; place-items:center; margin-bottom:8px;}
+  .rec-btn{width:148px; height:148px; border-radius:50%; border:none; cursor:pointer; background:linear-gradient(150deg,var(--coral),var(--coral-soft)); box-shadow:0 14px 40px rgba(255,92,73,.5), inset 0 2px 8px rgba(255,255,255,.2); display:grid; place-items:center; position:relative; z-index:2; transition:transform .15s ease;}
+  .rec-btn:active{transform:scale(.95);}
+  .rec-btn .ico{width:54px;height:54px;color:#fff;}
+  .rec-btn.recording{background:linear-gradient(150deg,#2B2E38,#23262F); box-shadow:0 10px 30px rgba(0,0,0,.5);}
+  .rec-btn.recording .square{width:34px;height:34px;border-radius:9px;background:var(--coral);}
+  .ring{position:absolute; border-radius:50%; border:2px solid var(--coral); opacity:0; pointer-events:none;}
+  .rec-btn-wrap.live .ring{animation:pulse 2s ease-out infinite;}
+  .rec-btn-wrap.live .ring:nth-child(2){animation-delay:.66s;}
+  .rec-btn-wrap.live .ring:nth-child(3){animation-delay:1.33s;}
+  @keyframes pulse{0%{width:148px;height:148px;opacity:.6;}100%{width:200px;height:200px;opacity:0;}}
+  .live-transcript{width:100%; margin-top:26px; text-align:left; min-height:120px; background:var(--ink-2); border:1px solid var(--line); border-radius:16px; padding:16px; font-size:15px; color:var(--text); max-height:34vh; overflow-y:auto;}
+  .live-transcript .interim{color:var(--muted);}
+  .live-transcript .placeholder{color:var(--muted-2); font-style:italic;}
+  .save-row{display:flex; gap:10px; width:100%; margin-top:14px;}
+
+  .btn{font-family:var(--font-body); font-weight:500; font-size:15px; border-radius:14px; padding:14px 18px; border:1px solid var(--line); background:var(--surface-2); color:var(--text); cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:9px; transition:transform .12s ease, background .2s ease, border-color .2s; flex:1;}
+  .btn:active{transform:scale(.97);}
+  .btn.primary{background:linear-gradient(150deg,var(--coral),var(--coral-soft)); border-color:transparent; color:#fff; font-weight:600;}
+  .btn.ghost{background:transparent;}
+  .btn:disabled{opacity:.4; cursor:not-allowed;}
+  .btn svg{width:18px;height:18px;}
+
+  .date-group{margin-bottom:22px;}
+  .date-label{font-family:var(--font-display); font-weight:600; font-size:13px; color:var(--amber); letter-spacing:.04em; margin:0 4px 10px; text-transform:capitalize;}
+  .rec-item{background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:14px 16px; margin-bottom:10px;}
+  .rec-item .top{display:flex; align-items:center; justify-content:space-between; gap:10px;}
+  .rec-item .meta{display:flex; align-items:center; gap:10px; min-width:0; flex:1;}
+  .rec-item .dur{font-size:12px; color:var(--muted); background:var(--ink-2); padding:3px 8px; border-radius:8px;}
+  .rec-item .acts{display:flex; gap:6px; flex-shrink:0;}
+  .icon-btn{width:36px; height:36px; border-radius:10px; border:1px solid var(--line); background:var(--surface-2); color:var(--text); display:grid; place-items:center; cursor:pointer;}
+  .icon-btn:active{transform:scale(.94);}
+  .icon-btn svg{width:17px;height:17px;}
+  .icon-btn.danger{color:var(--coral);}
+  .rec-item audio{width:100%; margin-top:12px; height:38px;}
+  .rec-item .transcript-box{margin-top:12px; font-size:14px; color:#D8D6D0; background:var(--ink-2); border:1px solid var(--line); border-radius:12px; padding:12px; max-height:200px; overflow-y:auto; white-space:pre-wrap; display:none;}
+  .rec-item .transcript-box.open{display:block;}
+  .rec-item .title-input{background:transparent; border:none; color:var(--text); font-family:var(--font-body); font-weight:600; font-size:15px; width:100%; padding:0;}
+  .rec-item .title-input:focus{outline:none; color:var(--coral-soft);}
+  .empty{text-align:center; color:var(--muted); padding:50px 20px; font-size:15px;}
+  .empty .big{font-family:var(--font-display); font-size:40px; margin-bottom:8px;}
+
+  .field-label{font-size:13px; color:var(--muted); margin:18px 4px 8px; font-weight:500;}
+  select.sel, textarea.ta, input.txt{width:100%; font-family:var(--font-body); font-size:15px; color:var(--text); background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:14px;}
+  select.sel:focus, textarea.ta:focus, input.txt:focus{outline:none; border-color:var(--coral);}
+  textarea.ta{resize:vertical; min-height:70px;}
+  .templates{display:grid; grid-template-columns:1fr 1fr; gap:9px; margin-top:4px;}
+  .tpl{text-align:left; background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:13px 14px; cursor:pointer; transition:border-color .2s, background .2s; display:flex; flex-direction:column; gap:3px;}
+  .tpl:active{transform:scale(.98);}
+  .tpl.active{border-color:var(--coral); background:rgba(255,92,73,.08);}
+  .tpl .t-name{font-weight:600; font-size:14px;}
+  .tpl .t-desc{font-size:11px; color:var(--muted);}
+  .tpl .t-ico{font-size:18px; margin-bottom:2px;}
+  .output-box{margin-top:14px; background:var(--ink-2); border:1px solid var(--line); border-radius:16px; padding:16px; font-size:14px; white-space:pre-wrap; color:#E4E2DC; min-height:80px; max-height:42vh; overflow-y:auto;}
+  .output-box.empty-state{color:var(--muted-2); font-style:italic;}
+  .share-row{display:flex; gap:9px; margin-top:12px; flex-wrap:wrap;}
+
+  .lock-screen{text-align:center; padding-top:40px; display:flex; flex-direction:column; align-items:center;}
+  .lock-ico{width:96px; height:96px; border-radius:28px; margin-bottom:22px; background:linear-gradient(150deg,var(--surface-2),var(--surface)); border:1px solid var(--line); display:grid; place-items:center;}
+  .lock-ico svg{width:46px;height:46px;color:var(--coral);}
+  .lock-screen h2{font-family:var(--font-display); font-weight:600; font-size:24px; margin:0 0 8px;}
+  .lock-screen p{color:var(--muted); font-size:14px; max-width:300px; margin:0 0 26px;}
+  .admin-stats{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:18px;}
+  .stat{background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:16px;}
+  .stat .num{font-family:var(--font-display); font-weight:800; font-size:30px; color:var(--coral-soft);}
+  .stat .lbl{font-size:12px; color:var(--muted); margin-top:2px;}
+  .admin-section{margin-bottom:16px;}
+  .admin-section h3{font-size:14px; color:var(--muted); font-weight:600; margin:0 0 10px 4px; text-transform:uppercase; letter-spacing:.08em;}
+  .config-note{font-size:13px; color:var(--muted); line-height:1.6;}
+  .config-note code{background:var(--ink-2); padding:2px 6px; border-radius:6px; font-size:12px; color:var(--amber);}
+
+  nav{position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:560px; height:calc(var(--nav-h) + env(safe-area-inset-bottom)); padding-bottom:env(safe-area-inset-bottom); background:rgba(20,21,26,.82); backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px); border-top:1px solid var(--line); display:flex; z-index:10;}
+  .nav-btn{flex:1; border:none; background:none; color:var(--muted-2); cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; font-family:var(--font-body); font-size:11px; font-weight:500; padding-top:8px; transition:color .2s;}
+  .nav-btn svg{width:23px;height:23px;}
+  .nav-btn.active{color:var(--coral);}
+
+  #toast{position:fixed; bottom:calc(var(--nav-h) + 18px); left:50%; transform:translateX(-50%) translateY(20px); background:var(--surface-2); border:1px solid var(--line); color:var(--text); padding:12px 18px; border-radius:14px; font-size:14px; box-shadow:var(--shadow); opacity:0; pointer-events:none; transition:all .3s ease; z-index:50; max-width:90%; text-align:center;}
+  #toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+  #toast.err{border-color:var(--coral);}
+  .hidden{display:none !important;}
+
+  /* ---------- login overlay ---------- */
+  #loginOverlay{position:fixed; inset:0; z-index:100; background:var(--ink); display:flex; align-items:center; justify-content:center; padding:24px; flex-direction:column;}
+  #loginOverlay::before{content:""; position:absolute; inset:0; background:radial-gradient(120% 70% at 50% 0%, rgba(255,92,73,.18), transparent 60%); pointer-events:none;}
+  .login-card{position:relative; z-index:1; width:100%; max-width:380px; text-align:center;}
+  .login-logo{width:64px; height:64px; border-radius:20px; margin:0 auto 20px; background:linear-gradient(145deg,var(--coral),var(--amber)); display:grid; place-items:center; box-shadow:0 10px 30px rgba(255,92,73,.45);}
+  .login-logo svg{width:32px;height:32px;}
+  .login-card h1{font-family:var(--font-display); font-weight:800; font-size:30px; margin:0 0 6px; letter-spacing:-.02em;}
+  .login-card h1 span{color:var(--coral);}
+  .login-card .sub{color:var(--muted); font-size:14px; margin:0 0 26px;}
+  .login-card input{margin-bottom:11px;}
+  #loginMsg{font-size:13px; color:var(--muted); min-height:18px; margin-top:6px;}
+  .login-toggle{margin-top:18px; font-size:14px; color:var(--muted);}
+  .login-toggle b{color:var(--coral); cursor:pointer; font-weight:600;}
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN ============ -->
+<div id="loginOverlay">
+  <div class="login-card">
+    <div class="login-logo">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Z" fill="#fff"/><path d="M6 11a6 6 0 0 0 12 0M12 17v3" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>
+    </div>
+    <h1>Vox<span>Prompt</span></h1>
+    <p class="sub" id="loginSub">Log in op je eigen, afgeschermde ruimte</p>
+    <input class="txt" type="email" id="loginEmail" placeholder="E-mailadres" autocomplete="email" />
+    <input class="txt" type="password" id="loginPass" placeholder="Wachtwoord" autocomplete="current-password" />
+    <button class="btn primary" id="loginBtn" style="width:100%; margin-top:4px;">Inloggen</button>
+    <div id="loginMsg"></div>
+    <div class="login-toggle" id="loginToggle">Nog geen account? <b id="toggleLink">Account aanmaken</b></div>
+  </div>
+</div>
+
+<div id="app">
+  <header>
+    <div class="brand">
+      <div class="dot"><svg viewBox="0 0 24 24" fill="none"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Z" fill="#fff"/><path d="M6 11a6 6 0 0 0 12 0M12 17v3" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg></div>
+      <h1>Vox<span>Prompt</span></h1>
+    </div>
+    <div class="status-pill" id="dbStatus"><span class="led"></span><span id="dbStatusText">verbinden…</span></div>
+  </header>
+
+  <main>
+    <section class="view active" id="view-record">
+      <div class="recorder">
+        <div class="rec-timer" id="timer">00:00</div>
+        <div class="rec-hint" id="recHint">Tik op de knop om een gesprek op te nemen</div>
+        <div class="rec-btn-wrap" id="recBtnWrap">
+          <span class="ring"></span><span class="ring"></span><span class="ring"></span>
+          <button class="rec-btn" id="recBtn" aria-label="Opname starten">
+            <svg class="ico" id="recIco" viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z" fill="currentColor"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+        <div class="live-transcript" id="liveTranscript"><span class="placeholder">Live transcriptie verschijnt hier tijdens het opnemen…</span></div>
+        <div class="save-row hidden" id="saveRow">
+          <button class="btn ghost" id="discardBtn">Weggooien</button>
+          <button class="btn primary" id="saveBtn">Opslaan</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-list">
+      <div class="view-title">Opnames</div>
+      <div id="recordingsList"></div>
+    </section>
+
+    <section class="view" id="view-prompt">
+      <div class="view-title">Prompt maken</div>
+      <div class="field-label">Kies een opname</div>
+      <select class="sel" id="promptRecSelect"></select>
+      <div class="field-label">Kies een standaardprompt</div>
+      <div class="templates" id="templates"></div>
+      <div class="field-label">…of typ je eigen instructie</div>
+      <textarea class="ta" id="customInstruction" placeholder="Bijv. 'Vat samen in 3 bullets en noem de besluiten'"></textarea>
+      <button class="btn primary" id="generateBtn" style="margin-top:14px; width:100%;">
+        <svg viewBox="0 0 24 24" fill="none"><path d="m12 3 2.09 5.26L20 9.27l-4 3.64L17.18 19 12 16.27 6.82 19 8 12.91l-4-3.64 5.91-1.01L12 3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+        Genereer prompt
+      </button>
+      <div class="output-box empty-state" id="outputBox">Je gegenereerde prompt verschijnt hier.</div>
+      <div class="share-row" id="shareRow">
+        <button class="btn ghost" id="copyBtn"><svg viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M5 15V5a2 2 0 0 1 2-2h8" stroke="currentColor" stroke-width="1.8"/></svg>Kopieer</button>
+        <button class="btn ghost" id="mailBtn"><svg viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="m3 7 9 6 9-6" stroke="currentColor" stroke-width="1.8"/></svg>Mail</button>
+        <button class="btn ghost" id="waBtn"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3a9 9 0 0 0-7.7 13.7L3 21l4.5-1.2A9 9 0 1 0 12 3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>WhatsApp</button>
+      </div>
+    </section>
+
+    <section class="view" id="view-admin">
+      <div class="view-title">Admin</div>
+      <div id="adminLock" class="lock-screen">
+        <div class="lock-ico"><svg viewBox="0 0 24 24" fill="none"><path d="M7 11V8a5 5 0 0 1 10 0v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><rect x="5" y="11" width="14" height="9" rx="2" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="15.5" r="1.3" fill="currentColor"/></svg></div>
+        <h2 id="lockTitle">Beveiligde zone</h2>
+        <p id="lockDesc">Alleen toegankelijk voor de eigenaar via Face ID.</p>
+        <button class="btn primary" id="faceBtn" style="flex:0; padding-left:28px; padding-right:28px;">
+          <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="4" stroke="currentColor" stroke-width="1.8"/><path d="M8 9v1M16 9v1M9 15s1 1.5 3 1.5S15 15 15 15M8 7h-.5A1.5 1.5 0 0 0 6 8.5V9m10-2h.5A1.5 1.5 0 0 1 18 8.5V9M8 17H7.5A1.5 1.5 0 0 1 6 15.5V15m10 2h.5a1.5 1.5 0 0 0 1.5-1.5V15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          <span id="faceBtnText">Ontgrendel met Face ID</span>
+        </button>
+      </div>
+      <div id="adminPanel" class="hidden">
+        <div class="admin-stats">
+          <div class="stat"><div class="num" id="statCount">0</div><div class="lbl">Opnames</div></div>
+          <div class="stat"><div class="num" id="statMins">0</div><div class="lbl">Minuten opgenomen</div></div>
+        </div>
+        <div class="admin-section">
+          <h3>App delen</h3>
+          <div class="card">
+            <div class="config-note" style="margin-bottom:12px;">Deel de app met een korte uitleg via WhatsApp.</div>
+            <button class="btn primary" id="shareAppBtn" style="width:100%;"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3a9 9 0 0 0-7.7 13.7L3 21l4.5-1.2A9 9 0 1 0 12 3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>Deel app via WhatsApp</button>
+          </div>
+        </div>
+        <div class="admin-section">
+          <h3>Beveiliging</h3>
+          <div class="card">
+            <div class="config-note" id="faceStatusNote" style="margin-bottom:12px;"></div>
+            <button class="btn ghost" id="resetFaceBtn" style="width:100%; margin-bottom:10px;">Face ID opnieuw instellen</button>
+            <button class="btn ghost" id="logoutBtn" style="width:100%;">Uitloggen</button>
+          </div>
+        </div>
+        <div class="admin-section">
+          <h3>Account &amp; status</h3>
+          <div class="card"><div class="config-note" id="configNote"></div></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <nav>
+    <button class="nav-btn active" data-view="record"><svg viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z" stroke="currentColor" stroke-width="1.8"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>Opnemen</button>
+    <button class="nav-btn" data-view="list"><svg viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h16M4 18h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>Opnames</button>
+    <button class="nav-btn" data-view="prompt"><svg viewBox="0 0 24 24" fill="none"><path d="m12 3 2.09 5.26L20 9.27l-4 3.64L17.18 19 12 16.27 6.82 19 8 12.91l-4-3.64 5.91-1.01L12 3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>Prompt</button>
+    <button class="nav-btn" data-view="admin"><svg viewBox="0 0 24 24" fill="none"><path d="M7 11V8a5 5 0 0 1 10 0v3" stroke="currentColor" stroke-width="1.8"/><rect x="5" y="11" width="14" height="9" rx="2" stroke="currentColor" stroke-width="1.8"/></svg>Admin</button>
+  </nav>
+</div>
+
+<div id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/* =================================================================
+   VoxPrompt — configuratie
+   ================================================================= */
+const CONFIG = {
+  APP_NAME: "VoxPrompt",
+  APP_URL: window.location.origin + window.location.pathname,
+  TRANSCRIPT_LANG: "nl-NL",
+  SUPABASE_URL: "VUL_HIER_JE_SUPABASE_URL_IN",
+  SUPABASE_ANON_KEY: "VUL_HIER_JE_SUPABASE_ANON_KEY_IN",
+  BUCKET: "audio",
+  OWNER_EMAIL: "VUL_HIER_JE_EIGEN_EMAIL_IN"   // alleen dit account ziet de Admin-tab + deelfunctie
+};
+
+const TEMPLATES = [
+  { id:"summary", ico:"📝", name:"Korte samenvatting", desc:"Heldere samenvatting",
+    text:"Maak een korte, heldere samenvatting van het volgende gesprek. Noem de belangrijkste onderwerpen en besluiten.\n\n--- GESPREK ---\n{transcript}" },
+  { id:"actions", ico:"✅", name:"Actiepunten per persoon", desc:"Taken & deadlines",
+    text:"Haal uit het volgende gesprek de actiepunten, geordend per persoon. Geef per persoon een bulletlijst met taken en eventuele deadlines. Noem ook openstaande vragen.\n\n--- GESPREK ---\n{transcript}" },
+  { id:"mail", ico:"✉️", name:"Samenvattende mail", desc:"Klaar om te sturen",
+    text:"Schrijf op basis van het volgende gesprek een professionele, beknopte samenvattende e-mail voor de deelnemers. Structuur: korte intro, kernpunten en besluiten, daarna de actiepunten. Toon: vriendelijk en zakelijk.\n\n--- GESPREK ---\n{transcript}" },
+  { id:"ppt", ico:"📊", name:"PowerPoint-slide", desc:"Inhoud voor 1 slide",
+    text:"Vat het volgende gesprek samen als inhoud voor één overzichtelijke PowerPoint-slide: een pakkende titel, 3 tot 5 bullets met de kernpunten en een korte conclusie.\n\n--- GESPREK ---\n{transcript}" }
+];
+
+let sb=null, dbReady=false, currentUser=null, loginMode="signin";
+let mediaRecorder=null, audioChunks=[], stream=null;
+let recognition=null, finalTranscript="", recording=false, intentionalStop=false;
+let timerInt=null, startTime=0, wakeLock=null;
+let pendingBlob=null, pendingMime="", pendingDuration=0;
+let recordings=[], selectedTemplate=null;
+
+const $=s=>document.querySelector(s);
+const $$=s=>document.querySelectorAll(s);
+
+function toast(msg,isErr){ const t=$("#toast"); t.textContent=msg; t.className=isErr?"show err":"show"; clearTimeout(t._t); t._t=setTimeout(()=>t.className="",2800); }
+function pad(n){ return String(n).padStart(2,"0"); }
+function fmtTime(s){ const m=Math.floor(s/60),sec=s%60; return pad(m)+":"+pad(sec); }
+function fmtDateLabel(iso){ const d=new Date(iso),now=new Date(); const dStr=d.toLocaleDateString("nl-NL",{weekday:"long",day:"numeric",month:"long"}); if(now.toDateString()===d.toDateString())return "Vandaag"; if(new Date(now-864e5).toDateString()===d.toDateString())return "Gisteren"; return dStr; }
+function fmtClock(iso){ return new Date(iso).toLocaleTimeString("nl-NL",{hour:"2-digit",minute:"2-digit"}); }
+function bufToB64url(buf){ return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,""); }
+function b64urlToBuf(s){ s=s.replace(/-/g,"+").replace(/_/g,"/"); const p="=".repeat((4-s.length%4)%4); const str=atob(s+p); const b=new Uint8Array(str.length); for(let i=0;i<str.length;i++)b[i]=str.charCodeAt(i); return b.buffer; }
+function randBytes(n){ const a=new Uint8Array(n); crypto.getRandomValues(a); return a; }
+
+/* ---------- Supabase ---------- */
+function initSupabase(){
+  const set=$("#dbStatus"), txt=$("#dbStatusText");
+  if(!CONFIG.SUPABASE_URL || CONFIG.SUPABASE_URL.startsWith("VUL_HIER") || !window.supabase){
+    set.className="status-pill warn"; txt.textContent="Niet ingesteld"; dbReady=false; return;
+  }
+  try{ sb=window.supabase.createClient(CONFIG.SUPABASE_URL,CONFIG.SUPABASE_ANON_KEY); dbReady=true; }
+  catch(e){ set.className="status-pill warn"; txt.textContent="Verbindingsfout"; dbReady=false; }
+}
+
+/* ---------- Auth ---------- */
+async function checkSession(){
+  if(!dbReady){ showLogin(); $("#loginMsg").textContent="Database nog niet ingesteld — zie de uitleg."; return; }
+  const { data:{ session } } = await sb.auth.getSession();
+  if(session && session.user){ currentUser=session.user; enterApp(); } else showLogin();
+}
+function showLogin(){ $("#loginOverlay").classList.remove("hidden"); }
+function enterApp(){
+  $("#loginOverlay").classList.add("hidden");
+  const set=$("#dbStatus"), txt=$("#dbStatusText");
+  set.className="status-pill ok"; txt.textContent=currentUser?currentUser.email:"Verbonden";
+  applyOwnerVisibility();
+}
+async function doAuth(){
+  const email=$("#loginEmail").value.trim(), pass=$("#loginPass").value;
+  if(!email||!pass){ $("#loginMsg").textContent="Vul e-mail en wachtwoord in."; return; }
+  if(!dbReady){ $("#loginMsg").textContent="Database nog niet ingesteld."; return; }
+  const btn=$("#loginBtn"); btn.disabled=true; btn.textContent="Even geduld…"; $("#loginMsg").textContent="";
+  try{
+    if(loginMode==="signup"){
+      const { data, error } = await sb.auth.signUp({ email, password:pass });
+      if(error) throw error;
+      if(data.session){ currentUser=data.user; enterApp(); }
+      else $("#loginMsg").textContent="Check je e-mail om je account te bevestigen, log daarna in.";
+    } else {
+      const { data, error } = await sb.auth.signInWithPassword({ email, password:pass });
+      if(error) throw error;
+      currentUser=data.user; enterApp();
+    }
+  }catch(e){ $("#loginMsg").textContent = e.message||"Inloggen mislukt"; }
+  finally{ btn.disabled=false; btn.textContent = loginMode==="signup"?"Account aanmaken":"Inloggen"; }
+}
+$("#loginBtn").addEventListener("click", doAuth);
+$("#loginPass").addEventListener("keydown", e=>{ if(e.key==="Enter") doAuth(); });
+// toggle tussen inloggen / account aanmaken (gedelegeerd, want het element wordt herschreven)
+document.addEventListener("click",(e)=>{ if(e.target&&e.target.id==="toggleLink"){
+  loginMode = loginMode==="signin" ? "signup":"signin";
+  const signup = loginMode==="signup";
+  $("#loginBtn").textContent = signup?"Account aanmaken":"Inloggen";
+  $("#loginSub").textContent = signup?"Maak je eigen, afgeschermde ruimte aan":"Log in op je eigen, afgeschermde ruimte";
+  $("#loginToggle").innerHTML = signup ? 'Al een account? <b id="toggleLink">Inloggen</b>' : 'Nog geen account? <b id="toggleLink">Account aanmaken</b>';
+}});
+
+/* ---------- Eigenaar / admin-zichtbaarheid ---------- */
+function ownerConfigured(){ return CONFIG.OWNER_EMAIL && !CONFIG.OWNER_EMAIL.startsWith("VUL_HIER"); }
+function isOwner(){
+  if(!ownerConfigured()) return true; // nog niet ingesteld: niet uitsluiten (geen lockout tijdens setup)
+  return !!(currentUser && currentUser.email && currentUser.email.toLowerCase() === CONFIG.OWNER_EMAIL.toLowerCase());
+}
+function applyOwnerVisibility(){
+  const adminBtn = document.querySelector('.nav-btn[data-view="admin"]');
+  if(adminBtn) adminBtn.style.display = isOwner() ? "" : "none";
+  if(!isOwner() && $("#view-admin").classList.contains("active")) showView("record");
+}
+
+/* ---------- Navigatie ---------- */
+function showView(name){
+  if(name==="admin" && !isOwner()){ toast("Alleen de eigenaar heeft toegang tot Admin",true); name="record"; }
+  $$(".view").forEach(v=>v.classList.remove("active"));
+  $("#view-"+name).classList.add("active");
+  $$(".nav-btn").forEach(b=>b.classList.toggle("active",b.dataset.view===name));
+  if(name==="list") loadRecordings();
+  if(name==="prompt") refreshPromptSelect();
+}
+$$(".nav-btn").forEach(b=>b.addEventListener("click",()=>showView(b.dataset.view)));
+
+/* ---------- Wake Lock (scherm aan tijdens opname) ---------- */
+async function requestWakeLock(){ try{ if("wakeLock" in navigator){ wakeLock=await navigator.wakeLock.request("screen"); } }catch(e){} }
+function releaseWakeLock(){ try{ if(wakeLock){ wakeLock.release(); wakeLock=null; } }catch(e){} }
+document.addEventListener("visibilitychange", async ()=>{ if(recording && document.visibilityState==="visible"){ await requestWakeLock(); if(recognition){ try{recognition.start();}catch(e){} } } });
+
+/* ---------- Opnemen ---------- */
+function pickMime(){ if(typeof MediaRecorder==="undefined")return null; const ts=["audio/webm;codecs=opus","audio/webm","audio/mp4","audio/aac"]; for(const t of ts){ try{ if(MediaRecorder.isTypeSupported(t))return t; }catch(e){} } return ""; }
+function setupRecognition(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition; if(!SR)return null;
+  const r=new SR(); r.lang=CONFIG.TRANSCRIPT_LANG; r.continuous=true; r.interimResults=true;
+  r.onresult=(e)=>{ let interim=""; for(let i=e.resultIndex;i<e.results.length;i++){ const t=e.results[i][0].transcript; if(e.results[i].isFinal)finalTranscript+=t+" "; else interim+=t; } renderLive(interim); };
+  r.onerror=(e)=>{ if(e.error==="not-allowed"||e.error==="service-not-allowed") toast("Geen microfoon-/spraaktoegang",true); };
+  r.onend=()=>{ if(recording && !intentionalStop){ try{ r.start(); }catch(e){} } };
+  return r;
+}
+function renderLive(interim){ const box=$("#liveTranscript"); if(!finalTranscript&&!interim){ box.innerHTML='<span class="placeholder">Luistert…</span>'; return; } box.innerHTML=finalTranscript+(interim?'<span class="interim">'+interim+'</span>':""); box.scrollTop=box.scrollHeight; }
+
+async function startRecording(){
+  try{ stream=await navigator.mediaDevices.getUserMedia({audio:true}); }
+  catch(e){ toast("Microfoon-toegang geweigerd",true); return; }
+  const mime=pickMime(); audioChunks=[]; finalTranscript=""; pendingBlob=null; intentionalStop=false;
+  try{ mediaRecorder = mime!=null ? new MediaRecorder(stream, mime?{mimeType:mime}:undefined) : null; }
+  catch(e){ mediaRecorder=new MediaRecorder(stream); }
+  pendingMime=(mediaRecorder&&mediaRecorder.mimeType)||mime||"audio/webm";
+  mediaRecorder.ondataavailable=e=>{ if(e.data.size>0)audioChunks.push(e.data); };
+  mediaRecorder.onstop=()=>{ pendingBlob=new Blob(audioChunks,{type:pendingMime.split(";")[0]}); if(stream)stream.getTracks().forEach(t=>t.stop()); $("#saveRow").classList.remove("hidden"); };
+  mediaRecorder.start();
+  recognition=setupRecognition();
+  if(recognition){ try{ recognition.start(); }catch(e){} }
+  else $("#liveTranscript").innerHTML='<span class="placeholder">Spraakherkenning niet beschikbaar in deze browser — de audio wordt wél opgenomen. Je kunt het transcript later bij de opname zelf typen.</span>';
+  await requestWakeLock();
+  recording=true; startTime=Date.now();
+  timerInt=setInterval(()=>{ $("#timer").textContent=fmtTime(Math.floor((Date.now()-startTime)/1000)); },500);
+  const btn=$("#recBtn"); btn.classList.add("recording"); $("#recBtnWrap").classList.add("live");
+  $("#recIco").outerHTML='<span class="square" id="recIco"></span>';
+  $("#recHint").textContent="Opname loopt — tik om te stoppen"; $("#saveRow").classList.add("hidden"); renderLive("");
+}
+function stopRecording(){
+  intentionalStop=true; recording=false; pendingDuration=Math.floor((Date.now()-startTime)/1000);
+  clearInterval(timerInt); releaseWakeLock();
+  if(recognition){ try{ recognition.stop(); }catch(e){} }
+  if(mediaRecorder&&mediaRecorder.state!=="inactive") mediaRecorder.stop();
+  const btn=$("#recBtn"); btn.classList.remove("recording"); $("#recBtnWrap").classList.remove("live");
+  const ico=$("#recIco"); if(ico) ico.outerHTML='<svg class="ico" id="recIco" viewBox="0 0 24 24" fill="none"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z" fill="currentColor"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+  $("#recHint").textContent="Opname klaar — sla op of gooi weg";
+}
+$("#recBtn").addEventListener("click",()=>{ recording?stopRecording():startRecording(); });
+$("#discardBtn").addEventListener("click",()=>{ pendingBlob=null; finalTranscript=""; pendingDuration=0; $("#saveRow").classList.add("hidden"); $("#timer").textContent="00:00"; $("#recHint").textContent="Tik op de knop om een gesprek op te nemen"; $("#liveTranscript").innerHTML='<span class="placeholder">Live transcriptie verschijnt hier tijdens het opnemen…</span>'; });
+$("#saveBtn").addEventListener("click",saveRecording);
+
+async function saveRecording(){
+  if(!pendingBlob){ toast("Geen opname om op te slaan",true); return; }
+  if(!dbReady||!currentUser){ toast("Niet ingelogd",true); return; }
+  const btn=$("#saveBtn"); btn.disabled=true; btn.textContent="Opslaan…";
+  try{
+    const uid=currentUser.id;
+    const ext=pendingMime.includes("mp4")||pendingMime.includes("aac")?"m4a":(pendingMime.includes("webm")?"webm":"dat");
+    const path=uid+"/rec-"+Date.now()+"."+ext;
+    const up=await sb.storage.from(CONFIG.BUCKET).upload(path,pendingBlob,{contentType:pendingMime.split(";")[0],upsert:false});
+    if(up.error) throw up.error;
+    const ins=await sb.from("recordings").insert({ user_id:uid, title:"Gesprek "+new Date().toLocaleString("nl-NL",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}), duration_seconds:pendingDuration, transcript:finalTranscript.trim(), audio_path:path });
+    if(ins.error) throw ins.error;
+    toast("Opname opgeslagen ✓"); $("#discardBtn").click(); showView("list");
+  }catch(e){ console.error(e); toast("Opslaan mislukt: "+(e.message||e),true); }
+  finally{ btn.disabled=false; btn.textContent="Opslaan"; }
+}
+
+/* ---------- Opnames lijst ---------- */
+async function loadRecordings(){
+  const list=$("#recordingsList");
+  if(!dbReady||!currentUser){ list.innerHTML='<div class="empty"><div class="big">🔒</div>Log eerst in.</div>'; return; }
+  list.innerHTML='<div class="empty">Laden…</div>';
+  try{
+    const { data, error }=await sb.from("recordings").select("*").order("created_at",{ascending:false});
+    if(error) throw error; recordings=data||[]; await renderRecordings();
+  }catch(e){ list.innerHTML='<div class="empty">Kon opnames niet laden.<br><small>'+(e.message||e)+'</small></div>'; }
+}
+async function renderRecordings(){
+  const list=$("#recordingsList");
+  if(!recordings.length){ list.innerHTML='<div class="empty"><div class="big">🎙️</div>Nog geen opnames.<br>Neem je eerste gesprek op!</div>'; return; }
+  const groups={}; recordings.forEach(r=>{ const k=new Date(r.created_at).toDateString(); (groups[k]=groups[k]||[]).push(r); });
+  let html="";
+  Object.keys(groups).forEach(k=>{
+    html+='<div class="date-group"><div class="date-label">'+fmtDateLabel(groups[k][0].created_at)+'</div>';
+    groups[k].forEach(r=>{
+      html+=`<div class="rec-item" data-id="${r.id}">
+        <div class="top">
+          <div class="meta"><input class="title-input" value="${(r.title||"Gesprek").replace(/"/g,'&quot;')}" data-id="${r.id}" /></div>
+          <div class="acts">
+            <span class="dur">${fmtTime(r.duration_seconds||0)}</span>
+            <button class="icon-btn" data-act="transcript" data-id="${r.id}"><svg viewBox="0 0 24 24" fill="none"><path d="M5 5h14M5 10h14M5 15h9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+            <button class="icon-btn danger" data-act="delete" data-id="${r.id}"><svg viewBox="0 0 24 24" fill="none"><path d="M5 7h14M9 7V5h6v2M7 7l1 13h8l1-13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+          </div>
+        </div>
+        <audio controls preload="none" data-aid="${r.id}"></audio>
+        <div class="transcript-box" data-tbox="${r.id}">${r.transcript?r.transcript:'<span style="color:var(--muted-2)">Geen transcript. Tik om te typen…</span>'}</div>
+      </div>`;
+    });
+    html+='</div>';
+  });
+  list.innerHTML=html;
+  // signed URLs (privé) per opname laden
+  for(const r of recordings){
+    if(r.audio_path){
+      try{ const { data }=await sb.storage.from(CONFIG.BUCKET).createSignedUrl(r.audio_path,3600);
+        if(data&&data.signedUrl){ const el=list.querySelector('audio[data-aid="'+r.id+'"]'); if(el) el.src=data.signedUrl; } }catch(e){}
+    }
+  }
+  list.querySelectorAll('[data-act="transcript"]').forEach(b=>b.addEventListener("click",()=>{ list.querySelector('[data-tbox="'+b.dataset.id+'"]').classList.toggle("open"); }));
+  list.querySelectorAll('[data-act="delete"]').forEach(b=>b.addEventListener("click",()=>deleteRecording(b.dataset.id)));
+  list.querySelectorAll('.title-input').forEach(inp=>inp.addEventListener("change",()=>updateTitle(inp.dataset.id,inp.value)));
+  list.querySelectorAll('.transcript-box').forEach(box=>{
+    box.addEventListener("click",()=>{ if(box.getAttribute("contenteditable")==="true")return; const rec=recordings.find(r=>String(r.id)===String(box.dataset.tbox)); box.setAttribute("contenteditable","true"); if(!rec.transcript)box.textContent=""; box.focus(); });
+    box.addEventListener("blur",()=>{ if(box.getAttribute("contenteditable")!=="true")return; box.setAttribute("contenteditable","false"); updateTranscript(box.dataset.tbox,box.textContent.trim()); });
+  });
+}
+async function updateTitle(id,title){ const rec=recordings.find(r=>String(r.id)===String(id)); if(rec)rec.title=title; await sb.from("recordings").update({title}).eq("id",id); }
+async function updateTranscript(id,transcript){ const rec=recordings.find(r=>String(r.id)===String(id)); if(rec)rec.transcript=transcript; const { error }=await sb.from("recordings").update({transcript}).eq("id",id); if(!error)toast("Transcript bijgewerkt ✓"); }
+async function deleteRecording(id){
+  if(!confirm("Deze opname verwijderen?"))return;
+  const rec=recordings.find(r=>String(r.id)===String(id));
+  try{ if(rec&&rec.audio_path) await sb.storage.from(CONFIG.BUCKET).remove([rec.audio_path]); await sb.from("recordings").delete().eq("id",id); recordings=recordings.filter(r=>String(r.id)!==String(id)); renderRecordings(); toast("Verwijderd"); }
+  catch(e){ toast("Verwijderen mislukt",true); }
+}
+
+/* ---------- Prompt maken ---------- */
+function renderTemplates(){
+  const wrap=$("#templates");
+  wrap.innerHTML=TEMPLATES.map(t=>`<div class="tpl" data-id="${t.id}"><span class="t-ico">${t.ico}</span><span class="t-name">${t.name}</span><span class="t-desc">${t.desc}</span></div>`).join("");
+  wrap.querySelectorAll(".tpl").forEach(el=>el.addEventListener("click",()=>{ wrap.querySelectorAll(".tpl").forEach(x=>x.classList.remove("active")); el.classList.add("active"); selectedTemplate=el.dataset.id; $("#customInstruction").value=""; }));
+}
+$("#customInstruction").addEventListener("input",()=>{ if($("#customInstruction").value.trim()){ $$(".tpl").forEach(x=>x.classList.remove("active")); selectedTemplate=null; } });
+async function refreshPromptSelect(){
+  const sel=$("#promptRecSelect");
+  if(!dbReady||!currentUser){ sel.innerHTML='<option value="">Log eerst in</option>'; return; }
+  if(!recordings.length){ try{ const {data}=await sb.from("recordings").select("*").order("created_at",{ascending:false}); recordings=data||[]; }catch(e){} }
+  if(!recordings.length){ sel.innerHTML='<option value="">Nog geen opnames</option>'; return; }
+  sel.innerHTML=recordings.map(r=>`<option value="${r.id}">${(r.title||"Gesprek")} — ${fmtDateLabel(r.created_at)} ${fmtClock(r.created_at)}</option>`).join("");
+}
+$("#generateBtn").addEventListener("click",()=>{
+  const rec=recordings.find(r=>String(r.id)===String($("#promptRecSelect").value));
+  if(!rec){ toast("Kies eerst een opname",true); return; }
+  const transcript=(rec.transcript||"").trim();
+  if(!transcript){ toast("Deze opname heeft nog geen transcript",true); return; }
+  let instruction; const custom=$("#customInstruction").value.trim();
+  if(custom) instruction=custom+"\n\n--- GESPREK ---\n{transcript}";
+  else if(selectedTemplate) instruction=TEMPLATES.find(t=>t.id===selectedTemplate).text;
+  else { toast("Kies een sjabloon of typ een instructie",true); return; }
+  const prompt=instruction.replace("{transcript}",transcript);
+  const box=$("#outputBox"); box.classList.remove("empty-state"); box.textContent=prompt; box.dataset.prompt=prompt; box.scrollIntoView({behavior:"smooth",block:"center"});
+});
+function currentPrompt(){ const p=$("#outputBox").dataset.prompt; if(!p){ toast("Genereer eerst een prompt",true); return null; } return p; }
+$("#copyBtn").addEventListener("click",async()=>{ const p=currentPrompt(); if(!p)return; try{ await navigator.clipboard.writeText(p); toast("Gekopieerd ✓"); }catch(e){ toast("Kopiëren niet gelukt",true); } });
+$("#mailBtn").addEventListener("click",()=>{ const p=currentPrompt(); if(!p)return; window.location.href="mailto:?subject="+encodeURIComponent("Prompt uit VoxPrompt")+"&body="+encodeURIComponent(p); });
+$("#waBtn").addEventListener("click",()=>{ const p=currentPrompt(); if(!p)return; window.open("https://wa.me/?text="+encodeURIComponent(p),"_blank"); });
+
+/* ---------- Admin / Face ID ---------- */
+const CRED_KEY="voxprompt_admin_cred";
+function adminInit(){
+  const reg=!!localStorage.getItem(CRED_KEY);
+  $("#lockTitle").textContent=reg?"Beveiligde zone":"Admin instellen";
+  $("#lockDesc").textContent=reg?"Alleen toegankelijk voor de eigenaar via Face ID.":"Stel eenmalig Face ID in zodat alleen jij toegang hebt.";
+  $("#faceBtnText").textContent=reg?"Ontgrendel met Face ID":"Face ID instellen";
+}
+$("#faceBtn").addEventListener("click",async()=>{ if(!window.PublicKeyCredential){ toast("Face ID/WebAuthn niet ondersteund",true); return; } localStorage.getItem(CRED_KEY)?unlockAdmin():registerFace(); });
+async function registerFace(){
+  try{
+    const cred=await navigator.credentials.create({ publicKey:{ challenge:randBytes(32), rp:{name:CONFIG.APP_NAME,id:location.hostname}, user:{id:randBytes(16),name:"admin",displayName:"Admin"}, pubKeyCredParams:[{type:"public-key",alg:-7},{type:"public-key",alg:-257}], authenticatorSelection:{authenticatorAttachment:"platform",userVerification:"required",residentKey:"preferred"}, timeout:60000, attestation:"none" }});
+    localStorage.setItem(CRED_KEY,bufToB64url(cred.rawId)); toast("Face ID ingesteld ✓"); adminInit(); openAdmin();
+  }catch(e){ console.error(e); toast("Face ID instellen geannuleerd",true); }
+}
+async function unlockAdmin(){
+  try{ const id=localStorage.getItem(CRED_KEY); await navigator.credentials.get({ publicKey:{ challenge:randBytes(32), allowCredentials:[{type:"public-key",id:b64urlToBuf(id)}], userVerification:"required", timeout:60000, rpId:location.hostname }}); openAdmin(); }
+  catch(e){ console.error(e); toast("Ontgrendelen mislukt",true); }
+}
+function openAdmin(){ $("#adminLock").classList.add("hidden"); $("#adminPanel").classList.remove("hidden"); fillAdminStats(); }
+async function fillAdminStats(){
+  let recs=recordings;
+  if(dbReady&&currentUser&&!recs.length){ try{ const {data}=await sb.from("recordings").select("duration_seconds"); recs=data||[]; }catch(e){} }
+  $("#statCount").textContent=recs.length;
+  $("#statMins").textContent=Math.round(recs.reduce((s,r)=>s+(r.duration_seconds||0),0)/60);
+  $("#faceStatusNote").innerHTML=localStorage.getItem(CRED_KEY)?"Face ID is ingesteld op dit apparaat. ✓":"Geen Face ID ingesteld.";
+  $("#configNote").innerHTML = (dbReady&&currentUser)
+    ? `Ingelogd als: <code>${currentUser.email}</code><br>Eigenaar (admin): ${ownerConfigured()? (isOwner()?'<span style="color:var(--mint)">jij ✓</span>':'<span style="color:var(--amber)">ander account</span>') : '<span style="color:var(--amber)">nog niet ingesteld — vul OWNER_EMAIL in</span>'}<br>Database: <span style="color:var(--mint)">verbonden &amp; privé</span><br>App-URL: <code>${CONFIG.APP_URL}</code>`
+    : `Database: <span style="color:var(--amber)">niet ingesteld</span><br>Vul <code>SUPABASE_URL</code> en <code>SUPABASE_ANON_KEY</code> in bovenaan het script.`;
+}
+$("#shareAppBtn").addEventListener("click",()=>{
+  const msg=`📣 *${CONFIG.APP_NAME}* — neem gesprekken op en maak er direct een prompt van.
+
+Zo gebruik je 'm:
+1️⃣ Open deze link op je telefoon: ${CONFIG.APP_URL}
+2️⃣ Maak een account aan met je e-mail (je opnames blijven privé, alleen voor jou).
+3️⃣ (iPhone) Tik op het deel-icoon → "Zet op beginscherm" voor een echte app-knop.
+4️⃣ Tab *Opnemen*: tik de grote knop, praat, tik nogmaals om te stoppen, en sla op.
+5️⃣ Tab *Prompt*: kies de opname + een knop (samenvatting, actiepunten, mail, slide) en genereer.
+6️⃣ Deel de prompt via mail of WhatsApp en plak 'm in ChatGPT of Claude.
+
+Veel plezier! 🎙️`;
+  window.open("https://wa.me/?text="+encodeURIComponent(msg),"_blank");
+});
+$("#resetFaceBtn").addEventListener("click",()=>{ if(!confirm("Face ID-instelling op dit apparaat wissen?"))return; localStorage.removeItem(CRED_KEY); adminInit(); $("#adminPanel").classList.add("hidden"); $("#adminLock").classList.remove("hidden"); toast("Face ID gewist"); });
+$("#logoutBtn").addEventListener("click",async()=>{ if(!confirm("Uitloggen?"))return; try{ await sb.auth.signOut(); }catch(e){} location.reload(); });
+
+/* ---------- Init ---------- */
+(function init(){
+  initSupabase();
+  renderTemplates();
+  adminInit();
+  checkSession();
+  try{
+    const manifest={ name:CONFIG.APP_NAME, short_name:CONFIG.APP_NAME, start_url:".", display:"standalone", background_color:"#0E0F13", theme_color:"#0E0F13",
+      icons:[{src:"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='42' fill='%23FF5C49'/%3E%3Cpath d='M96 112a18 18 0 0 0 18-18V64a18 18 0 0 0-36 0v30a18 18 0 0 0 18 18Z' fill='white'/%3E%3Cpath d='M60 90a36 36 0 0 0 72 0M96 130v18M78 148h36' stroke='white' stroke-width='10' stroke-linecap='round'/%3E%3C/svg%3E", sizes:"192x192", type:"image/svg+xml" }] };
+    const l=document.createElement("link"); l.rel="manifest"; l.href=URL.createObjectURL(new Blob([JSON.stringify(manifest)],{type:"application/json"})); document.head.appendChild(l);
+  }catch(e){}
+})();
+</script>
+</body>
+</html>
